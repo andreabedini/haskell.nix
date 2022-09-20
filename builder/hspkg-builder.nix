@@ -29,7 +29,9 @@ let
       "ghc902/stm-2.5.0.0" = "/libraries/stm";
       "ghc902/filepath-1.4.2.1" = "/libraries/filepath";
     }."${compiler-nix-name}/${name}" or null;
+
   src = if bundledSrc == null then pkg.src else ghc.configured-src + bundledSrc;
+
   cabalFile = if revision == null || revision == 0 || bundledSrc != null then null else
     fetchurl {
       name = "${name}-${toString revision}.cabal";
