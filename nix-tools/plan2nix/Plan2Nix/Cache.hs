@@ -1,38 +1,46 @@
 -- Note: this is identical to Stack2nix.Cache
 module Plan2Nix.Cache
-  ( readCache
-  , appendCache
-  , cacheHits
-  ) where
+  ( readCache,
+    appendCache,
+    cacheHits,
+    CacheEntry (..),
+  )
+where
 
-import Control.Exception (catch, SomeException(..))
+import Control.Exception (SomeException (..), catch)
 
-readCache :: FilePath
-          -> IO [( String -- url
-                 , String -- rev
-                 , String -- subdir
-                 , String -- sha256
-                 , String -- pkgname
-                 , String -- nixexpr-path
-                 )]
+data CacheEntry = CacheEntry
+  { cacheUrl :: String,
+    cacheEntryRev :: String,
+    cacheEntrySubdir :: String,
+    cacheEntrySha256 :: String,
+    cacheEntryPkgName :: String,
+    cacheEntryNExprPath :: String
+  }
+
+readCache :: FilePath -> IO [CacheEntry]
 readCache f = fmap (toTuple . words) . lines <$> readFile f
-  where toTuple [ url, rev, subdir, sha256, pkgname, exprPath ]
-          = ( url, rev, subdir, if sha256 == "NOHASH" then "" else sha256, pkgname, exprPath )
+  where
+    toTuple [url, rev, subdir, sha256, pkgname, exprPath] =
+      CacheEntry url rev subdir (if sha256 == "NOHASH" then "" else sha256) pkgname exprPath
 
 -- When we do not need a hash (when the files are local) we store "NOHASH" instead of ""
 -- in the file so that the use of `words` function in `readCache` still works.
 appendCache :: FilePath -> String -> String -> String -> String -> String -> String -> IO ()
 appendCache f url rev subdir sha256 pkgname exprPath = do
-  appendFile f $ unwords [ url, rev, subdir, if null sha256 then "NOHASH" else sha256, pkgname, exprPath ]
+  appendFile f $ unwords [url, rev, subdir, if null sha256 then "NOHASH" else sha256, pkgname, exprPath]
   appendFile f "\n"
 
-cacheHits :: FilePath -> String -> String -> String -> IO [ (String, String) ]
-cacheHits f url rev subdir
-  = do cache <- catch' (readCache f) (const (pure []))
-       return [ ( pkgname, exprPath )
-              | ( url', rev', subdir', sha256, pkgname, exprPath ) <- cache
-              , url == url'
-              , rev == rev'
-              , subdir == subdir' ]
-  where catch' :: IO a -> (SomeException -> IO a) -> IO a
-        catch' = catch
+cacheHits :: FilePath -> String -> String -> String -> IO [(String, String)]
+cacheHits f url rev subdir = do
+  cache <- catch' (readCache f) (const (pure []))
+  return
+    [ (pkgname, exprPath)
+      | CacheEntry url' rev' subdir' _sha256 pkgname exprPath <- cache,
+        url == url',
+        rev == rev',
+        subdir == subdir'
+    ]
+  where
+    catch' :: IO a -> (SomeException -> IO a) -> IO a
+    catch' = catch

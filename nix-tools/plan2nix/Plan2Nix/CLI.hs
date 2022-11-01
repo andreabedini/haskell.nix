@@ -4,7 +4,6 @@ module Plan2Nix.CLI
   ) where
 
 import Options.Applicative hiding (option)
-import Data.Semigroup ((<>))
 import Cabal2Nix (CabalDetailLevel(..))
 
 --------------------------------------------------------------------------------
