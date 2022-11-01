@@ -456,6 +456,84 @@ let
     '';
   };
 
+  extract-cabal-files = pkgs.writeShellApplication {
+    name = "extract-cabal-files";
+    runtimeInputs = with pkgs; [ coreutils gnutar jq ];
+    text = ''
+      set -e
+
+      PLANJSON=$1
+      OUTDIR=$2
+
+      infoTable=$(mktemp)
+      jq -r '."install-plan"[] | select(."pkg-src".type == "repo-tar") | [."pkg-name", ."pkg-version", ."pkg-cabal-sha256", ."pkg-src".repo.uri] | @tsv' \
+        <"$PLANJSON" >"$infoTable"
+
+      # index cabal file to their tarball
+      declare -A allCabalFiles
+      while read -r name version hash uri; do
+        allCabalFiles[$name/$version/$name.cabal]=''${uri#file:}/01-index.tar.gz
+      done < "$infoTable"
+
+      # index cabal file hashes to their filename in the tarball
+      declare -A allCabalHashes
+      while read -r name version hash uri; do
+        allCabalHashes[$hash]=$name/$version/$name.cabal
+      done < "$infoTable"
+
+      # index tarballs
+      declare -A allPaths
+      while read -r name version hash uri; do
+        allPaths[''${uri#file:}/01-index.tar.gz]=1
+      done < "$infoTable"
+
+      echo "We need to find ''${#allCabalFiles[@]} cabal files from ''${#allPaths[@]} repositories"
+
+      declare -x tmpDir
+      tmpDir=$(mktemp -d)
+      echo "tmpDir = $tmpDir"
+
+      # The tarball has multiple revisions of the same filename, we need to
+      # file these revisions by their hash, to distinguish them and to find
+      # them back.
+      store() {
+        out=$(mktemp)
+        cat >"$out"
+        cabalFileHash=$(sha256sum "$out" | cut -c 1-64)
+        mkdir -p "$(dirname "$tmpDir/$cabalFileHash/$TAR_FILENAME")"
+        mv "$out" "$tmpDir/$cabalFileHash/$TAR_FILENAME"
+      }
+      export -f store
+
+      # For each tarball
+      for path in "''${!allPaths[@]}"; do
+        echo "$path"
+        fileList=$(mktemp)
+        # Make a list of the cabal files to find in this tarball
+        for file in "''${!allCabalFiles[@]}"; do
+          if [[ ''${allCabalFiles[$file]} == "$path" ]]; then
+            echo "$file" >>"$fileList"
+          fi
+        done
+        # Use tar to extract only the cabal files we need
+        # Note that --to-command uses sh, while we need bash
+        tar xzf $path --files-from="$fileList" --to-command 'bash -c store'
+        rm "$fileList"
+      done
+
+      # Go through the cabal file hashes in the plan and match them with
+      # what we have extracted from the tarballs
+      for hash in "''${!allCabalHashes[@]}"; do
+        if [ -e "$tmpDir/$hash/''${allCabalHashes[$hash]}" ]; then
+          mv "$tmpDir/$hash/''${allCabalHashes[$hash]}" "$OUTDIR/''${allCabalHashes[$hash]##*/}"
+        else
+          echo "FAIL $hash not found in $tmpDir"
+          exit 1
+        fi
+      done
+    '';
+  };
+
   plan-nix = materialize ({
     inherit materialized;
     sha256 = plan-sha256;
@@ -486,6 +564,7 @@ let
   } ''
     tmp=$(mktemp -d)
     cd $tmp
+
     # if cleanedSource is empty, this means it's a new
     # project where the files haven't been added to the git
     # repo yet. We fail early and provide a useful error
@@ -498,7 +577,9 @@ let
     else
       cp -r ${cleanedSource}/* .
     fi
+
     chmod +w -R .
+
     # Decide what to do for each `package.yaml` file.
     for hpackFile in $(find . -name package.yaml); do (
       # Look to see if a `.cabal` file exists
@@ -517,8 +598,16 @@ let
       done
       )
     done
+
     ${pkgs.lib.optionalString (subDir != "") "cd ${subDir}"}
+
     ${fixedProject.makeFixedProjectFile}
+
+    # Use the input map to turn urls into paths in cabal.project (e.g. for repositories)
+    ${builtins.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (url: path: ''
+    substituteInPlace ./cabal.project --replace "${url}" "file:${path}"
+    '') inputMap)}
+
     ${pkgs.lib.optionalString (cabalProjectFreeze != null) ''
       cp ${evalPackages.writeText "cabal.project.freeze" cabalProjectFreeze} \
         cabal.project.freeze
@@ -532,6 +621,7 @@ let
     # file into account.  Then it "writes out a freeze file which
     # records all of the versions and flags that are picked" (from cabal docs).
     echo "Using index-state ${index-state-found}"
+
     CABAL_DIR=${
       # This creates `.cabal` directory that is as it would have
       # been at the time `cached-index-state`.  We may include
@@ -562,9 +652,8 @@ let
 
     mkdir -p $out
 
-    cp cabal.project.freeze $freeze
     # Not needed any more (we don't want it to wind up in the $out hash)
-    rm cabal.project.freeze
+    mv -v cabal.project.freeze $freeze
 
     # ensure we have all our .cabal files (also those generated from package.yaml) files.
     # otherwise we'd need to be careful about putting the `cabal-generator = hpack` into
@@ -585,6 +674,16 @@ let
     # run `plan-to-nix` in $out.  This should produce files right there with the
     # proper relative paths.
     (cd $out${subDir'} && plan-to-nix --full --plan-json $tmp${subDir'}/dist-newstyle/cache/plan.json -o .)
+
+    # extract the correct cabal files from their tarballs
+    tmpCabalFilesDir=$(mktemp -d)
+    ${extract-cabal-files}/bin/extract-cabal-files $tmp${subDir'}/dist-newstyle/cache/plan.json $tmpCabalFilesDir
+
+    # process the cabal files with cabal-to-nix and store them as outputs
+    mkdir -p $out${subDir'}/cabal-files
+    for cabalFile in $tmpCabalFilesDir/*.cabal; do
+      cabal-to-nix $cabalFile > $out${subDir'}/cabal-files/$(basename $cabalFile .cabal).nix
+    done
 
     # Replace the /nix/store paths to minimal git repos with indexes (that will work with materialization).
     ${fixedProject.replaceLocations}
