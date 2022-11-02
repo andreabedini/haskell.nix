@@ -671,10 +671,6 @@ let
     # this is necessary so that plan-to-nix relative path logic can work.
     substituteInPlace $tmp${subDir'}/dist-newstyle/cache/plan.json --replace "$tmp" "$out"
 
-    # run `plan-to-nix` in $out.  This should produce files right there with the
-    # proper relative paths.
-    (cd $out${subDir'} && plan-to-nix --full --plan-json $tmp${subDir'}/dist-newstyle/cache/plan.json -o .)
-
     # extract the correct cabal files from their tarballs
     tmpCabalFilesDir=$(mktemp -d)
     ${extract-cabal-files}/bin/extract-cabal-files $tmp${subDir'}/dist-newstyle/cache/plan.json $tmpCabalFilesDir
@@ -682,8 +678,12 @@ let
     # process the cabal files with cabal-to-nix and store them as outputs
     mkdir -p $out${subDir'}/cabal-files
     for cabalFile in $tmpCabalFilesDir/*.cabal; do
-      cabal-to-nix $cabalFile > $out${subDir'}/cabal-files/$(basename $cabalFile .cabal).nix
+      cabal-to-nix $cabalFile > $out${subDir'}/.plan-nix/$(basename $cabalFile .cabal).nix
     done
+
+    # run `plan-to-nix` in $out.  This should produce files right there with the
+    # proper relative paths.
+    (cd $out${subDir'} && plan-to-nix --full --plan-json $tmp${subDir'}/dist-newstyle/cache/plan.json -o .)
 
     # Replace the /nix/store paths to minimal git repos with indexes (that will work with materialization).
     ${fixedProject.replaceLocations}
