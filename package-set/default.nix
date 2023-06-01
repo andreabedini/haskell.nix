@@ -1,8 +1,8 @@
 let
-  f = { hackage, pkgs, pkg-def, pkg-def-extras ? [ ], modules ? [ ] }:
+  f = { pkgs, pkg-def, pkg-def-extras ? [ ], modules ? [ ] }:
     let
       buildModules = f {
-        inherit hackage pkg-def pkg-def-extras modules;
+        inherit pkg-def pkg-def-extras modules;
         pkgs = pkgs.buildPackages;
       };
     in
@@ -36,9 +36,6 @@ let
 
               inherit buildModules;
             };
-
-            # Set the hackage DB for modules/hackage.nix
-            hackage.db = hackage;
 
             # Set the plan for modules/plan.nix
             plan.pkg-def = hackage:

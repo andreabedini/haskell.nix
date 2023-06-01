@@ -73,15 +73,13 @@ final: prev: {
             , extra-hackages ? [] # Extra Hackage repositories to use besides main one.
             }:
 
-            let
-              hackageAll = builtins.foldl' final.lib.recursiveUpdate hackage extra-hackages;
-            in
-
             import ../package-set {
-                inherit pkg-def pkg-def-extras;
-                modules = defaultModules ++ modules;
                 pkgs = final;
-                hackage = hackageAll;
+                inherit pkg-def pkg-def-extras;
+                modules =
+                  defaultModules
+                  ++ modules
+                  ++ [( {lib, ...}: { config.hackage.db = lib.mkMerge ([ (lib.mkBefore hackage) ] ++ extra-hackages); } )];
             };
 
         # Some boot packages (libiserv) are in lts, but not in hackage,
