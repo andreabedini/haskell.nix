@@ -1,4 +1,4 @@
-{ lib, config, pkgs, haskellLib, ... }:
+{ lib, config, pkgs, ... }:
 
 {
   options.hsPkgs = lib.mkOption {

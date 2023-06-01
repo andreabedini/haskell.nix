@@ -3,8 +3,8 @@
 let
   # it also crucially depends on system, and compiler, both of which need to be resolved to the
   # current system being targeted.
-  hostMap = import ../lib/host-map.nix pkgs.stdenv;
-  cabal = import ../lib/cabal-os-arch-comp.nix;
+  hostMap = import ../../lib/host-map.nix pkgs.stdenv;
+  cabal = import ../../lib/cabal-os-arch-comp.nix;
 
   compiler = cabal.compiler // {
     isGhc = true;

@@ -1,6 +1,6 @@
 { config, pkgs, lib, haskellLib, buildModules, ... }:
 let
-  builder = haskellLib.weakCallPackage pkgs ../builder {
+  builder = haskellLib.weakCallPackage pkgs ../../builder {
     inherit haskellLib;
     ghc = config.ghc.package;
     compiler-nix-name = config.compiler.nix-name;
