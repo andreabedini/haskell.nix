@@ -45,20 +45,19 @@ let
         # we don't need to fetch cabal file revision zero because that's the one included in the source distribution
         if rev.revNum == 0 then null
         else
-          builtins.readFile (config.evalPackages.fetchurl (
-            {
+          builtins.readFile (config.evalPackages.fetchurl {
               name = "${pname}-${vnum}-r${toString rev.revNum}.cabal";
               url = "https://hackage.haskell.org/package/${pname}-${vnum}/revision/${toString rev.revNum}.cabal";
-              sha256 = rev.sha256;
+              inherit (rev) sha256;
               preferLocalBuild = false;
-            }));
+            });
     in
     {
       inherit sha256;
       inherit package-description-override;
       revision = rev.revNum;
       revisionSha256 = rev.sha256;
-    } // (x: (rev.nix or (import rev)) x) modArgs;
+    } // (rev.nix or (import rev)) modArgs;
 
   makeContentAddressed = revisions:
     let

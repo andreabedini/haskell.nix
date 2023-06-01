@@ -1,4 +1,4 @@
-{ lib, config, ... }:
+{ lib, ... }:
 {
   options.errorHandler = lib.mkOption {
     type = lib.types.unspecified;
