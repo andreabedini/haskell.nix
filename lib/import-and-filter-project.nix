@@ -13,15 +13,13 @@ let
   };
   # The sub directory containing the cabal.project or stack.yaml file
   projectSubDir' = src.origSubDir or "";                                     # With leading /
-  projectSubDir = pkgs.lib.strings.removePrefix "/" projectSubDir';          # Without /
-  projectSubDir'' = if projectSubDir == "" then "" else projectSubDir + "/"; # With trailing /
   project = import "${projectNix}${projectSubDir'}";
 in project // {
     extras = hackage: let old = (project.extras hackage).packages; in {
       packages = pkgs.lib.attrsets.mapAttrs (name: value:
         if builtins.isFunction value
           then value
-          else {...}@args: with pkgs.lib.strings;
+          else args: with pkgs.lib.strings;
             let
               oldPkg = import value args;
               packageInfo =
@@ -52,9 +50,9 @@ in project // {
                     };
                   };
             in oldPkg // {
-              src = (pkgs.lib).mkDefault packageInfo.packageSrc;
+              src = pkgs.lib.mkDefault packageInfo.packageSrc;
               package = oldPkg.package // {
-                isProject = (pkgs.lib).mkDefault packageInfo.isProject;
+                isProject = pkgs.lib.mkDefault packageInfo.isProject;
               };
             }) old;
     };

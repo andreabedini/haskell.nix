@@ -1,4 +1,4 @@
-{ lib, config, pkgs, haskellLib, ... }:
+{ lib, config, ... }:
 with lib;
 with types;
 let readIfExists = src: fileName:
@@ -112,7 +112,7 @@ in {
       description = ''
         Specifies the contents of urls in the cabal.project file.
         The `.rev` attribute is checked against the `tag` for `source-repository-packages`.
-        # FIXME is the following still relevant?
+        # FIXME is the followiRg still relevant?
         For `revision` blocks the `inputMap.<url>` will be used and
         they `.tar.gz` for the `packages` used will also be looked up
         in the `inputMap`.
