@@ -13,7 +13,7 @@ let
   };
 
   # Apply the package set function to get NixOS options.
-  inherit (import ../package-set.nix { hackage = null; inherit pkgs pkg-def; }) options;
+  inherit (import ../package-set { hackage = null; inherit pkgs pkg-def; }) options;
 
   optionsNix = (pkgs.nixosOptionsDoc { inherit options; }).optionsNix;
 

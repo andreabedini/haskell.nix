@@ -1,5 +1,5 @@
 let
-  f = { hackage, pkgs, pkg-def, pkg-def-extras ? [], modules ? [] }:
+  f = { hackage, pkgs, pkg-def, pkg-def-extras ? [ ], modules ? [ ] }:
     let
       buildModules = f {
         inherit hackage pkg-def pkg-def-extras modules;
@@ -11,26 +11,28 @@ let
         modules ++
         [
           ({ config, lib, ... }: {
-            _file = "haskell.nix/package-set.nix";
+            _file = "haskell.nix/package-set";
 
             # Provide all modules with haskellLib, pkgs, and pkgconfPkgs arguments
             _module.args = {
               # this is *not* the hasekllLib from nixpkgs; it is rather our own
               # library from haskell.nix
               haskellLib =
-                let hl = import ./lib {
-                  inherit pkgs lib;
-                  inherit (pkgs) stdenv recurseIntoAttrs srcOnly;
-                  haskellLib = hl;
-                };
-                in hl;
+                let
+                  hl = import ../lib {
+                    inherit pkgs lib;
+                    inherit (pkgs) stdenv recurseIntoAttrs srcOnly;
+                    haskellLib = hl;
+                  };
+                in
+                hl;
 
               # The package descriptions depend on pkgs, which are used to resolve system package dependencies
               # as well as pkgconfPkgs, which are used to resolve pkgconfig name to nixpkgs names. We simply
               # augment the existing pkgs set with the specific mappings:
-              pkgs = import ./lib/system-pkgs.nix pkgs;
+              pkgs = import ../lib/system-pkgs.nix pkgs;
 
-              pkgconfPkgs = import ./lib/pkgconf-nixpkgs-map.nix pkgs;
+              pkgconfPkgs = import ../lib/pkgconf-nixpkgs-map.nix pkgs;
 
               inherit buildModules;
             };
@@ -85,26 +87,28 @@ let
                     # into
                     #   x.revision = import ./some/path;
                     expand-paths = pkg: if !(isPath pkg.revision) then pkg else { revision = import pkg.revision; };
-                  # apply injection and expansion to the "packages" in extras.
+                    # apply injection and expansion to the "packages" in extras.
                   in
-                  lib.mapAttrs (k: v:
-                    if k != "packages" then
-                      v
-                    else
-                      lib.mapAttrs
-                        (_: pkg: (expand-paths (inject-revision pkg))) v)
-                        (inject-packages extras);
+                  lib.mapAttrs
+                    (k: v:
+                      if k != "packages" then
+                        v
+                      else
+                        lib.mapAttrs
+                          (_: pkg: (expand-paths (inject-revision pkg)))
+                          v)
+                    (inject-packages extras);
 
               in
               # fold any potential `pkg-def-extras`
-              # onto the `pkg-def`.
-              #
-              # This means you can have a base definition (e.g. stackage)
-              # and augment it with custom packages to your liking.
+                # onto the `pkg-def`.
+                #
+                # This means you can have a base definition (e.g. stackage)
+                # and augment it with custom packages to your liking.
               builtins.foldl'
                 lib.recursiveUpdate
-                  (pkg-def' hackage)
-                  (map (p: desugar (if builtins.isFunction p then p hackage else p)) pkg-def-extras);
+                (pkg-def' hackage)
+                (map (p: desugar (if builtins.isFunction p then p hackage else p)) pkg-def-extras);
           })
 
           # Error handlers
@@ -125,6 +129,7 @@ let
 
           # Configuration that applies to all plans
           ./modules/configuration-nix.nix
-      ];
+        ];
     };
-in f
+in
+f

@@ -77,7 +77,7 @@ final: prev: {
               hackageAll = builtins.foldl' final.lib.recursiveUpdate hackage extra-hackages;
             in
 
-            import ../package-set.nix {
+            import ../package-set {
                 inherit (args) pkg-def pkg-def-extras;
                 modules = defaultModules ++ modules;
                 pkgs = final;
