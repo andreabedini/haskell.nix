@@ -1,4 +1,4 @@
-{ lib, config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 with lib;
 with lib.types;
 {
@@ -60,7 +60,7 @@ with lib.types;
         else
           import pkgs.path {
             system = config.evalSystem;
-            overlays = pkgs.overlays;
+            inherit (pkgs) overlays;
           };
       description = ''
         Packages used to run `cabal` and `nix-tools`.

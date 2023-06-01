@@ -23,7 +23,8 @@ let
   #     to build at all.
   inherit (pkgs.buildPackages.buildPackages) gitMinimal;
 
-in {
+in
+{
   # Within the package components, these are the attribute names of
   # nested attrsets.
   subComponentTypes = [
@@ -39,17 +40,18 @@ in {
 
   foldComponents = tys: f: z: conf:
     let
-      comps = conf.components or {};
+      comps = conf.components or { };
       # ensure that comps.library exists and is not null.
       libComp = acc: if (comps.library or null) != null then f comps.library acc else acc;
       subComps = acc:
         lib.foldr
-          (ty: acc': foldrAttrVals f acc' (comps.${ty} or {}))
+          (ty: acc': foldrAttrVals f acc' (comps.${ty} or { }))
           acc
           tys;
-    in libComp (subComps z);
+    in
+    libComp (subComps z);
 
-  getAllComponents = foldComponents subComponentTypes (c: acc: [c] ++ acc) [];
+  getAllComponents = foldComponents subComponentTypes (c: acc: [ c ] ++ acc) [ ];
 
   componentPrefix = {
     sublibs = "lib";
@@ -73,26 +75,28 @@ in {
       isBuildable = comp:
         config.package.buildable # Set manually in a module (allows whole packages to be disabled)
         && comp.buildable        # Set based on `buildable` in `.cabal` files
-        && comp.planned;         # Set if the component was in the `plan.json`
+        && comp.planned; # Set if the component was in the `plan.json`
       buildableAttrs = lib.filterAttrs (n: isBuildable);
-      libComp = if comps.library == null || !(isBuildable comps.library)
-        then {}
+      libComp =
+        if comps.library == null || !(isBuildable comps.library)
+        then { }
         else lib.mapAttrs applyLibrary (removeAttrs comps (subComponentTypes ++ [ "setup" ]));
       subComps = lib.mapAttrs
         (ctype: attrs: lib.mapAttrs (applySubComp ctype) (buildableAttrs attrs))
         (builtins.intersectAttrs (lib.genAttrs subComponentTypes (_: null)) comps);
-    in subComps // libComp;
+    in
+    subComps // libComp;
 
   isLibrary = componentId: componentId.ctype == "lib";
   isExe = componentId: componentId.ctype == "exe";
   isTest = componentId: componentId.ctype == "test";
   isBenchmark = componentId: componentId.ctype == "bench";
   isExecutableType = componentId:
-       isExe componentId
+    isExe componentId
     || isTest componentId
     || isBenchmark componentId;
   mayHaveExecutable = componentId:
-       isExecutableType componentId;
+    isExecutableType componentId;
 
   # Was there a reference to the package source in the `cabal.project` or `stack.yaml` file.
   # This is used to make the default `packages` list for `shellFor`.
@@ -106,7 +110,7 @@ in {
 
   # Format a componentId as it should appear as a target on the
   # command line of the setup script.
-  componentTarget = componentId:"${componentId.ctype}:${componentId.cname}";
+  componentTarget = componentId: "${componentId.ctype}:${componentId.cname}";
 
   # Remove null or empty values from an attrset.
   optionalHooks = lib.filterAttrs (_: hook: hook != null && hook != "");
@@ -124,21 +128,24 @@ in {
   #  will call the expression at ./path with (scope // args)
   #
   weakCallPackage = scope: f: args:
-    let f' = if lib.isFunction f then f else import f;
-        args' = (builtins.intersectAttrs (builtins.functionArgs f') scope) // args;
-    in f' args';
+    let
+      f' = if lib.isFunction f then f else import f;
+      args' = (builtins.intersectAttrs (builtins.functionArgs f') scope) // args;
+    in
+    f' args';
 
   # Collect all (transitive) Haskell library dependencies of a
   # component.
   ## flatLibDepends :: Component -> [Package]
   flatLibDepends = component:
     let
-      makePairs = map (p: rec { key=val.name; val=(p.components.library or p); });
+      makePairs = map (p: rec { key = val.name; val = (p.components.library or p); });
       closure = builtins.genericClosure {
         startSet = makePairs component.depends;
-        operator = {val,...}: makePairs val.config.depends;
+        operator = { val, ... }: makePairs val.config.depends;
       };
-    in map ({val,...}: val) closure;
+    in
+    map ({ val, ... }: val) closure;
 
 
   # Extracts a selection of components from a Haskell package set.
@@ -155,18 +162,22 @@ in {
   #     to: tests.mypackage.unit-tests
   #
   collectComponents = group: packageSel: haskellPackages:
-    let packageToComponents = name: package:
-          # look for the components with this group if there are any
-          let components = package.components.${group} or {};
+    let
+      packageToComponents = name: package:
+        # look for the components with this group if there are any
+        let
+          components = package.components.${group} or { };
           # set recurseForDerivations unless it's a derivation itself (e.g. the "library" component) or an empty set
-          in if lib.isDerivation components || components == {}
-             then components
-             else recurseIntoAttrs components;
-        packageFilter = name: package: (package.isHaskell or false) && packageSel package;
-        filteredPkgs = lib.filterAttrs packageFilter haskellPackages;
-        # at this point we can filter out packages that don't have any of the given kind of component
-        packagesByComponent = lib.filterAttrs (_: components: components != {}) (lib.mapAttrs packageToComponents filteredPkgs);
-    in recurseIntoAttrs packagesByComponent;
+        in
+        if lib.isDerivation components || components == { }
+        then components
+        else recurseIntoAttrs components;
+      packageFilter = name: package: (package.isHaskell or false) && packageSel package;
+      filteredPkgs = lib.filterAttrs packageFilter haskellPackages;
+      # at this point we can filter out packages that don't have any of the given kind of component
+      packagesByComponent = lib.filterAttrs (_: components: components != { }) (lib.mapAttrs packageToComponents filteredPkgs);
+    in
+    recurseIntoAttrs packagesByComponent;
 
   # Equivalent to collectComponents with (_: true) as selection function.
   # Useful for pre-filtered package-set.
@@ -215,13 +226,16 @@ in {
   cleanGits = { src, gitDirs, name ? null, caller ? "cleanGits" }@args:
     let
       # List of filters, one for each git directory.
-      filters = builtins.map (subDir:
-        (pkgs.haskell-nix.haskellLib.cleanGit {
-          src = pkgs.haskell-nix.haskellLib.cleanSourceWith {
-            inherit src subDir;
-          };
-        }).filter) gitDirs;
-    in pkgs.haskell-nix.haskellLib.cleanSourceWith {
+      filters = builtins.map
+        (subDir:
+          (pkgs.haskell-nix.haskellLib.cleanGit {
+            src = pkgs.haskell-nix.haskellLib.cleanSourceWith {
+              inherit src subDir;
+            };
+          }).filter)
+        gitDirs;
+    in
+    pkgs.haskell-nix.haskellLib.cleanSourceWith {
       inherit src name caller;
       # Keep files that match any of the filters
       filter = path: type: pkgs.lib.any (f: f path type) filters;
@@ -262,10 +276,10 @@ in {
   # the use of "1.0.0.0" or { version = "1.0.0.0"; ... }
   versionOrModToMods = versionOrMod:
     if lib.isString versionOrMod
-      then [{ version = versionOrMod; }]
+    then [{ version = versionOrMod; }]
     else if lib.isList versionOrMod
-      then versionOrMod
-    else [versionOrMod];
+    then versionOrMod
+    else [ versionOrMod ];
 
   # Find the resolver in the stack.yaml file and fetch it if a sha256 value is provided
   fetchResolver = import ./fetch-resolver.nix {
@@ -287,11 +301,11 @@ in {
   # to keep `cleanSourceWith` support in the result.
   appendSubDir = { src, subDir, includeSiblings ? false }:
     if subDir == ""
-      then src
-      else
-        haskellLib.cleanSourceWith {
-          inherit src subDir includeSiblings;
-        };
+    then src
+    else
+      haskellLib.cleanSourceWith {
+        inherit src subDir includeSiblings;
+      };
 
   # Givin a `src` split it into a `root` path (based on `src.origSrc` if
   # present) and `subDir` (based on `src.origSubDir).  The
@@ -300,41 +314,44 @@ in {
     subDir = src.origSubDir or "";
     root =
       if subDir == ""
-        then src # if there was no subdir use the original src
-        else
-          # Use `cleanSourceWith` to make sure the `filter` is still used
-          if src ? origSrc && src ? filter
-            then haskellLib.cleanSourceWith {
+      then src # if there was no subdir use the original src
+      else
+      # Use `cleanSourceWith` to make sure the `filter` is still used
+        if src ? origSrc && src ? filter
+        then
+          haskellLib.cleanSourceWith
+            {
               name = src.name or "source" + "-root";
               src = src.origSrc;
               # Not passing src.origSubDir so that the result points `origSrc`
               inherit (src) filter;
             }
-            else src.origSrc or src;  # If there is a subDir and origSrc (but no filter) use origSrc
+        else src.origSrc or src; # If there is a subDir and origSrc (but no filter) use origSrc
   };
 
   # Run evalModules passing the project function argument (m) as a module along with
   # the the a projectType module (../modules/cabal-project.nix or ../modules/stack-project.nix).
   # The resulting config is then passed to the project function's implementation.
   evalProjectModule = projectType: m: f:
-    let project = f
-      (lib.evalModules {
-        modules = (if builtins.isList m then m else [m]) ++ [
-          # Include ../modules/cabal-project.nix or ../modules/stack-project.nix
-          (import ../modules/project-common.nix)
-          (import projectType)
-          # Pass the pkgs and the buildProject to the modules
-          ({ config, lib, ... }: {
-            _module.args = {
-              inherit pkgs;
-              # to make it easy to depends on build packages in, eg., shell definition:
-              inherit (project) buildProject;
-            };
-            inherit (project) hsPkgs;
-          })
-        ];
-      }).config;
-    in project;
+    lib.evalModules {
+      modules =
+      (if builtins.isList m then m else [ m ]) ++
+      [
+        # Include ../modules/cabal-project.nix or ../modules/stack-project.nix
+        (import ../modules/project-common.nix)mk
+        (import projectType)
+        # Pass the pkgs and the buildProject to the modules
+        ({ config, lib, ... }: {
+          _module.args = {
+            inherit pkgs;
+            # to make it easy to depends on build packages in, eg., shell definition:
+            inherit (config.result-of-f) buildProject;
+          };
+          inherit (config.result-of-f) hsPkgs;
+        })
+        f
+      ];
+    };
 
   # Converts from a `compoent.depends` value to a library derivation.
   # In the case of sublibs the `depends` value should already be the derivation.
@@ -346,54 +363,61 @@ in {
 
   # Use by `prefixFlake` to add a prefix to every attribute
   prefixAttrs = prefix: x:
-    __listToAttrs (map (n:{
-      name = prefix + n;
-      value = x.${n};
-    }) (__attrNames x));
+    __listToAttrs (map
+      (n: {
+        name = prefix + n;
+        value = x.${n};
+      })
+      (__attrNames x));
 
   # Used by `combineFlakes` to add the prefix to each flake
   prefixFlake = prefix: sep: flake:
     if prefix == "default"
-      then flake
-      else
-        __mapAttrs (_: prefixAttrs (prefix + sep)) flake //
-        lib.optionalAttrs (flake ? devShell) {
-          # We can't add the prefix to this
-          inherit (flake) devShell;
-        } // lib.optionalAttrs (flake ? devShells) {
-          devShells = __listToAttrs (map (n: {
+    then flake
+    else
+      __mapAttrs (_: prefixAttrs (prefix + sep)) flake //
+      lib.optionalAttrs (flake ? devShell) {
+        # We can't add the prefix to this
+        inherit (flake) devShell;
+      } // lib.optionalAttrs (flake ? devShells) {
+        devShells = __listToAttrs (map
+          (n: {
             # We don't want ":default" on the end of the non
             # default dev shells
-            name = if n == "default"
+            name =
+              if n == "default"
               then prefix
               else prefix + sep + n;
             value = flake.devShells.${n};
-          }) (__attrNames flake.devShells));
-        } // lib.optionalAttrs (flake ? hydraJobs) {
-          hydraJobs.${lib.removeSuffix ":" prefix} = flake.hydraJobs;
-        } // lib.optionalAttrs (flake ? ciJobs) {
-          ciJobs.${lib.removeSuffix ":" prefix} = flake.ciJobs;
-        };
+          })
+          (__attrNames flake.devShells));
+      } // lib.optionalAttrs (flake ? hydraJobs) {
+        hydraJobs.${lib.removeSuffix ":" prefix} = flake.hydraJobs;
+      } // lib.optionalAttrs (flake ? ciJobs) {
+        ciJobs.${lib.removeSuffix ":" prefix} = flake.ciJobs;
+      };
 
   # Used by `combineFlakes` to combine flakes together
   addFlakes = a: b:
-    __listToAttrs (map (name: {
-      inherit name;
-      value =
-        # This favours the first item (`a`) in the case of duplicates
-        # so that `combineFlakes` will use the first flake in the
-        # list for `devShell`.
-        if name == "devShell"
+    __listToAttrs (map
+      (name: {
+        inherit name;
+        value =
+          # This favours the first item (`a`) in the case of duplicates
+          # so that `combineFlakes` will use the first flake in the
+          # list for `devShell`.
+          if name == "devShell"
           then a.devShell or b.devShell # `devShell` is a derivation
-        else
-          (b.${name} or {}) // (a.${name} or {});
-    }) (__attrNames (a // b)));
+          else
+            (b.${name} or { }) // (a.${name} or { });
+      })
+      (__attrNames (a // b)));
 
   # This function can combine a list of flakes allong with
   # suitable prefix values into a single flake.
   # Since thre is no way to add a prefix to `devShell`, the first
   # one in the list will be used.
-  combineFlakes = sep: prefixAndFlakes: builtins.foldl' addFlakes {}
+  combineFlakes = sep: prefixAndFlakes: builtins.foldl' addFlakes { }
     (lib.mapAttrsToList (prefix: flake: prefixFlake prefix sep flake) prefixAndFlakes);
 
   # Make the CI jobs for running code coverage.
@@ -419,138 +443,153 @@ in {
         }
       ];
     in
-      builtins.listToAttrs (lib.concatMap (packageName: [{
+    builtins.listToAttrs (lib.concatMap
+      (packageName: [{
         name = packageName;
         value = coverageProject.hsPkgs.${packageName}.coverageReport;
-      }]) (packageNames coverageProject));
+      }])
+      (packageNames coverageProject));
 
   # Flake package names that are flat and match the cabal component names.
   mkFlakePackages = haskellPackages: builtins.listToAttrs (
-    lib.concatLists (lib.mapAttrsToList (packageName: package:
+    lib.concatLists (lib.mapAttrsToList
+      (packageName: package:
         lib.optional (package.components ? library)
-            { name = "${packageName}:lib:${packageName}"; value = package.components.library; }
-        ++ lib.mapAttrsToList (n: v:
+          { name = "${packageName}:lib:${packageName}"; value = package.components.library; }
+        ++ lib.mapAttrsToList
+          (n: v:
             { name = "${packageName}:lib:${n}"; value = v; })
           (package.components.sublibs)
-        ++ lib.mapAttrsToList (n: v:
+        ++ lib.mapAttrsToList
+          (n: v:
             { name = "${packageName}:exe:${n}"; value = v; })
           (package.components.exes)
-        ++ lib.mapAttrsToList (n: v:
+        ++ lib.mapAttrsToList
+          (n: v:
             { name = "${packageName}:test:${n}"; value = v; })
           (package.components.tests)
-        ++ lib.mapAttrsToList (n: v:
+        ++ lib.mapAttrsToList
+          (n: v:
             { name = "${packageName}:bench:${n}"; value = v; })
           (package.components.benchmarks)
-    ) haskellPackages));
+      )
+      haskellPackages));
 
   # Flake package names that are flat and match the cabal component names.
   mkFlakeApps = haskellPackages: builtins.listToAttrs (
-    lib.concatLists (lib.mapAttrsToList (packageName: package:
-      lib.mapAttrsToList (n: v:
+    lib.concatLists (lib.mapAttrsToList
+      (packageName: package:
+        lib.mapAttrsToList
+          (n: v:
             { name = "${packageName}:exe:${n}"; value = { type = "app"; program = v.exePath; }; })
           (package.components.exes)
-        ++ lib.mapAttrsToList (n: v:
+        ++ lib.mapAttrsToList
+          (n: v:
             { name = "${packageName}:test:${n}"; value = { type = "app"; program = v.exePath; }; })
           (package.components.tests)
-        ++ lib.mapAttrsToList (n: v:
+        ++ lib.mapAttrsToList
+          (n: v:
             { name = "${packageName}:benchmark:${n}"; value = { type = "app"; program = v.exePath; }; })
           (package.components.benchmarks)
-    ) haskellPackages));
+      )
+      haskellPackages));
 
   # Flatten the result of collectChecks or collectChecks' for use in flake `checks`
   mkFlakeChecks = allChecks: builtins.listToAttrs (
-    lib.concatLists (lib.mapAttrsToList (packageName: checks:
-      # Avoid `recurseForDerivations` issues
-      lib.optionals (lib.isAttrs checks) (
-        lib.mapAttrsToList (n: v:
-          { name = "${packageName}:test:${n}"; value = v; })
-        (lib.filterAttrs (_: v: lib.isDerivation v) checks))
-    ) allChecks));
+    lib.concatLists (lib.mapAttrsToList
+      (packageName: checks:
+        # Avoid `recurseForDerivations` issues
+        lib.optionals (lib.isAttrs checks) (
+          lib.mapAttrsToList
+            (n: v:
+              { name = "${packageName}:test:${n}"; value = v; })
+            (lib.filterAttrs (_: v: lib.isDerivation v) checks))
+      )
+      allChecks));
 
   removeRecurseForDerivations = x:
-    let clean = builtins.removeAttrs x ["recurseForDerivations"];
+    let clean = builtins.removeAttrs x [ "recurseForDerivations" ];
     in
-      if x.recurseForDerivations or false
-        then builtins.mapAttrs (_: removeRecurseForDerivations) clean
-        else clean;
+    if x.recurseForDerivations or false
+    then builtins.mapAttrs (_: removeRecurseForDerivations) clean
+    else clean;
 
-  mkFlakeCiJobs = project: {
-          packages
-        , checks
-        , coverage
-        , devShells
-        , checkedProject
-    }: {
-      # Run all the tests and code coverage
-      checks = removeRecurseForDerivations checks;
-      inherit
-        coverage
-        # Make sure all the packages build
-        packages
-        # Build and cache any tools in the `devShells`
-        devShells;
-      # Build tools and cache tools needed for the project
-      inherit (project) roots;
-    }
-    # Build the plan-nix and check it if materialized
-    // lib.optionalAttrs (checkedProject ? plan-nix) {
-      plan-nix = checkedProject.plan-nix;
-    }
-    # Build the stack-nix and check it if materialized
-    // lib.optionalAttrs (checkedProject ? stack-nix) {
-      stack-nix = checkedProject.stack-nix;
-    };
+  mkFlakeCiJobs = project: { packages
+                           , checks
+                           , coverage
+                           , devShells
+                           , checkedProject
+                           }: {
+    # Run all the tests and code coverage
+    checks = removeRecurseForDerivations checks;
+    inherit
+      coverage
+      # Make sure all the packages build
+      packages
+      # Build and cache any tools in the `devShells`
+      devShells;
+    # Build tools and cache tools needed for the project
+    inherit (project) roots;
+  }
+  # Build the plan-nix and check it if materialized
+  // lib.optionalAttrs (checkedProject ? plan-nix) {
+    plan-nix = checkedProject.plan-nix;
+  }
+  # Build the stack-nix and check it if materialized
+  // lib.optionalAttrs (checkedProject ? stack-nix) {
+    stack-nix = checkedProject.stack-nix;
+  };
 
-  mkFlake = project: {
-          selectPackages ? haskellLib.selectProjectPackages
-        , haskellPackages ? selectPackages project.hsPkgs
-        , packages ? mkFlakePackages haskellPackages
-        , apps ? mkFlakeApps haskellPackages
-        , checks ? mkFlakeChecks (collectChecks' haskellPackages)
-        , coverage ? {}
-        , devShell ? project.shell
-        , devShells ? { default = devShell; }
-        , checkedProject ? project.appendModule { checkMaterialization = true; }
-        , ciJobs ? mkFlakeCiJobs project { inherit checks coverage packages devShells checkedProject; }
-        , hydraJobs ? ciJobs
-      }: {
-      inherit
-          # Used by:
-          #   `nix build .#pkg-name:lib:pkg-name`
-          #   `nix build .#pkg-name:lib:sublib-name`
-          #   `nix build .#pkg-name:exe:exe-name`
-          #   `nix build .#pkg-name:test:test-name`
-          packages
-          # Used by:
-          #   `nix flake check`
-          checks
-          #   `nix run .#pkg-name:exe:exe-name`
-          #   `nix run .#pkg-name:test:test-name`
-          apps
-          # Used by hydra.
-          hydraJobs
-          # Like `hydraJobs` but with `${system}` first so that it the IFDs will not have
-          # to run for systems we are not testing (placement of `${system}` is done
-          # by `flake-utils.eachSystem` and it treats `hydraJobs` differently from
-          # the other flake attributes).
-          # See https://github.com/numtide/flake-utils/blob/04c1b180862888302ddfb2e3ad9eaa63afc60cf8/default.nix#L131-L134
-          ciJobs
-          # Used by:
-          #   `nix develop`
-          devShells
-          devShell; # TODO remove devShell once everyone has nix that supports `devShells.default`
-      };
+  mkFlake = project: { selectPackages ? haskellLib.selectProjectPackages
+                     , haskellPackages ? selectPackages project.hsPkgs
+                     , packages ? mkFlakePackages haskellPackages
+                     , apps ? mkFlakeApps haskellPackages
+                     , checks ? mkFlakeChecks (collectChecks' haskellPackages)
+                     , coverage ? { }
+                     , devShell ? project.shell
+                     , devShells ? { default = devShell; }
+                     , checkedProject ? project.appendModule { checkMaterialization = true; }
+                     , ciJobs ? mkFlakeCiJobs project { inherit checks coverage packages devShells checkedProject; }
+                     , hydraJobs ? ciJobs
+                     }: {
+    inherit
+      # Used by:
+      #   `nix build .#pkg-name:lib:pkg-name`
+      #   `nix build .#pkg-name:lib:sublib-name`
+      #   `nix build .#pkg-name:exe:exe-name`
+      #   `nix build .#pkg-name:test:test-name`
+      packages
+      # Used by:
+      #   `nix flake check`
+      checks
+      #   `nix run .#pkg-name:exe:exe-name`
+      #   `nix run .#pkg-name:test:test-name`
+      apps
+      # Used by hydra.
+      hydraJobs
+      # Like `hydraJobs` but with `${system}` first so that it the IFDs will not have
+      # to run for systems we are not testing (placement of `${system}` is done
+      # by `flake-utils.eachSystem` and it treats `hydraJobs` differently from
+      # the other flake attributes).
+      # See https://github.com/numtide/flake-utils/blob/04c1b180862888302ddfb2e3ad9eaa63afc60cf8/default.nix#L131-L134
+      ciJobs
+      # Used by:
+      #   `nix develop`
+      devShells
+      devShell; # TODO remove devShell once everyone has nix that supports `devShells.default`
+  };
 
   # Adapt a standard project shell (`project.shell` or `haskell-nix.shellFor`)
   # into a devshell module (https://github.com/numtide/devshell)
   # that should provide the same environnement.
   devshellFor = shell: {
-    packages = lib.filter lib.isDerivation (shell.nativeBuildInputs
-    # devshell does not use pkgs.mkShell / pkgs.stdenv.mkDerivation,
-    # so we need to explicit required dependencies which
-    # are provided implicitely by stdenv when using the normal shell:
-    ++ shell.stdenv.defaultNativeBuildInputs)
-    ++ [shell.stdenv.cc.bintools];
+    packages = lib.filter lib.isDerivation
+      (shell.nativeBuildInputs
+        # devshell does not use pkgs.mkShell / pkgs.stdenv.mkDerivation,
+        # so we need to explicit required dependencies which
+        # are provided implicitely by stdenv when using the normal shell:
+        ++ shell.stdenv.defaultNativeBuildInputs)
+    ++ [ shell.stdenv.cc.bintools ];
     # We need to expose all the necessary env variables:
     env = [
       {
@@ -559,7 +598,7 @@ in {
       }
     ] ++ lib.mapAttrsToList lib.nameValuePair ({
       inherit (shell) NIX_GHC_LIBDIR;
-    # CABAL_CONFIG is only set if the shell was built with exactDeps=true
+      # CABAL_CONFIG is only set if the shell was built with exactDeps=true
     } // lib.optionalAttrs (shell ? CABAL_CONFIG) {
       inherit (shell) CABAL_CONFIG;
     });
@@ -598,8 +637,9 @@ in {
   # Assert that each item in the list is unique
   checkUnique = msg: x:
     if __length x == __length (uniqueWithName x)
-      then x
-      else builtins.throw "Duplicate items found in ${msg} ${
+    then x
+    else
+      builtins.throw "Duplicate items found in ${msg} ${
         __toJSON (__attrNames (lib.filterAttrs (_: v: __length v > 1) (
           builtins.groupBy (x: if __typeOf x == "set" then x.name or "noname" else "notset") x)))
       }";
