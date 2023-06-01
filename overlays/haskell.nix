@@ -687,6 +687,7 @@ final: prev: {
                     then pkgs.buildPackages.haskell-nix.cabalProject' projectModule
                     else project;
 
+                  # NOTE: mkCabalProjectPkgSet -> mkPkgSet -> package-set.nix -> evalModules
                   pkg-set =
                     if plan-pkgs ? configurationError then
                       {
