@@ -778,16 +778,16 @@ final: prev: {
                             then components.library
                             else components.${haskellLib.prefixComponent.${builtins.elemAt m 0}}.${builtins.elemAt m 1};
 
-                      coverageReport = haskellLib.coverageReport (rec {
+                      coverageReport = haskellLib.coverageReport {
                         name = package.identifier.name + "-" + package.identifier.version;
                         # Include the checks for a single package.
-                        checks = final.lib.filter (final.lib.isDerivation) (final.lib.attrValues package'.checks);
+                        checks = final.lib.filter final.lib.isDerivation (final.lib.attrValues package'.checks);
                         # Checks from that package may provide coverage information for any library in the project.
                         mixLibraries = final.lib.concatMap
                           (pkg: final.lib.optional (pkg.components ? library) pkg.components.library)
                             (final.lib.attrValues (haskellLib.selectProjectPackages project.hsPkgs));
                         ghc = project.pkg-set.config.ghc.package;
-                      });
+                      };
                     }
                 ) (builtins.removeAttrs rawProject.hsPkgs
                   # These are functions not packages
@@ -947,10 +947,9 @@ final: prev: {
                   ));
                 forAllVariants =
                     forAllCrossCompilers "default" project
-                  ++ final.lib.concatLists (final.lib.mapAttrsToList
-                    (name: projectVariant: forAllCrossCompilers name projectVariant)
-                     project.projectVariants);
+                  ++ final.lib.concatLists (final.lib.mapAttrsToList forAllCrossCompilers project.projectVariants);
               in haskellLib.combineFlakes ":" (builtins.foldl' (a: b: a // b) {} forAllVariants);
+
             flake = args: (project.appendModule { flake = args; }).flake';
 
             inherit (rawProject) args;
