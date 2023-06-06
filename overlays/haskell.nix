@@ -648,20 +648,18 @@ final: prev: {
         # This function is like `cabalProject` but it makes the plan-nix available
         # separately from the hsPkgs.  The advantage is that the you can get the
         # plan-nix without building the project.
-        cabalProject' = projectModule:
+        cabalProject' = projectModule: (cabalProject'Internal projectModule).config.project;
+
+        cabalProject'Internal = projectModule:
           (final.lib.evalModules {
             modules = 
               (if builtins.isList projectModule then projectModule else [ projectModule ]) ++
               [ (import ../modules/project-common.nix)
                 (import ../modules/cabal-project.nix)
-                # Pass the pkgs and the buildProject to the modules
+                #
                 ({ config, lib, ... }: {
-                  _module.args = {
-                    pkgs = final;
-                    # to make it easy to depends on build packages in, eg., shell definition:
-                    inherit (config.project) buildProject;
-                  };
-                  inherit (config.project) hsPkgs;
+                  _file = "haskell.nix/overlays/haskell.nix/1";
+                  _module.args = { pkgs = final; };
                 })
                 #
                 ({ config, lib, pkgs, ... }:
@@ -687,29 +685,58 @@ final: prev: {
                           };
                         }
                       else
-                        mkCabalProjectPkgSet {
-                          pkg-def-extras = config.pkg-def-extras or [];
+                        let
+                            compiler-nix-name' =
+                              if config.compiler-nix-name != null
+                                then config.compiler-nix-name
+                                else ((plan-pkgs.extras hackage).compiler or (plan-pkgs.pkgs hackage).compiler).nix-name;
 
-                          inherit (config) compiler-nix-name compilerSelection;
-                          inherit plan-pkgs;
+                            # only for assertion below
+                            package.compiler-nix-name.version = (config.compilerSelection pkgs.buildPackages).${compiler-nix-name'}.version;
+                            plan.compiler-nix-name.version = (config.compilerSelection pkgs.buildPackages).${(plan-pkgs.pkgs hackage).compiler.nix-name}.version;
+                            withMsg = lib.assertMsg;
+                        in
+                          # Check that the GHC version of the selected compiler matches the one of the plan
+                          assert (withMsg (package.compiler-nix-name.version == plan.compiler-nix-name.version)
+                            ''The compiler versions for the package and the plan don't match. Make sure you didn't forget to update plan-sha256.''
+                          );
+                          mkPkgSet {
+                            pkg-def = excludeBootPackages config.compiler-nix-name plan-pkgs.pkgs;
 
-                          modules =
-                            [ { _module.args.buildModules = lib.mkForce buildProject.pkg-set; } ] ++
-                            config.modules or [] ++
-                            [ {
-                                ghc.package =
-                                  if config.ghcOverride != null
-                                    then config.ghcOverride
-                                  else if config.ghc != null
-                                    then config.ghc
-                                  else
-                                    lib.mkDefault (config.compilerSelection pkgs.buildPackages).${config.compiler-nix-name};
+                            pkg-def-extras =
+                              [ plan-pkgs.extras
+                                # Using the -unchecked version here to avoid infinite
+                                # recursion issues when checkMaterialization = true
+                                pkgs.ghc-boot-packages-unchecked.${compiler-nix-name'}
+                              ] ++
+                              config.pkgs-def-extras or [];
 
-                                compiler.nix-name = lib.mkForce config.compiler-nix-name;
-                            } ] ++
-                            [ { evalPackages = lib.mkDefault config.evalPackages; } ];
+                            # note that these modules are for the pkgs-set, so `config` here is the project
+                            # config (in scope), not the pkgs-set config (which would be passed in)
+                            modules =
+                              # set doExactConfig = true, as we trust cabals resolution for
+                              # the plan.
+                              [ { doExactConfig = true; }
+                                # patches module
+                                ghcHackagePatches.${compiler-nix-name'} or {}
+                              ] ++
+                              [ { _module.args.buildModules = lib.mkForce buildProject.pkg-set; } ] ++
+                              config.modules or [] ++
+                              [ {
+                                  ghc.package =
+                                    if config.ghcOverride != null
+                                      then config.ghcOverride
+                                    else if config.ghc != null
+                                      then config.ghc
+                                    else
+                                      lib.mkDefault (config.compilerSelection pkgs.buildPackages).${config.compiler-nix-name};
 
-                          extra-hackages = config.extra-hackages or [] ++ callProjectResults.extra-hackages;
+                                  compiler.nix-name = lib.mkForce config.compiler-nix-name;
+                              } ] ++
+                              [ { evalPackages = lib.mkDefault config.evalPackages; } ] ++
+                              plan-pkgs.modules or [];
+
+                            extra-hackages = config.extra-hackages or [] ++ callProjectResults.extra-hackages;
                         };
 
                     project = addProjectAndPackageAttrs {
@@ -730,12 +757,18 @@ final: prev: {
                         inherit (callProjectResults) index-state-max;
                       };
                   in {
+                    _file = "haskell.nix/overlays/haskell.nix/2";
                     options.project = lib.mkOption { type = lib.types.unspecified; };
+                    config._module.args = {
+                      # to make it easy to depends on build packages in, eg., shell definition:
+                      inherit (project) buildProject;
+                    };
                     config.project = project;
+                    config.hsPkgs = project.hsPkgs;
                   }
                 )
               ];
-          }).config.project;
+          });
 
         # Take `hsPkgs` from the `rawProject` and update all the packages and
         # components so they have a `.project` attribute and as well as
