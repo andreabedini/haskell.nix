@@ -47,7 +47,7 @@ with types;
       default = [];
     };
     modules = mkOption {
-      type = nullOr (listOf unspecified);
+      type = listOf deferredModule;
       default = [];
     };
     extra-hackages = mkOption {
