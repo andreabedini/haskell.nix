@@ -70,14 +70,14 @@ final: prev: {
             , pkg-def-extras ? [] # Additional packages to augment the Base package set `pkg-def` with.
             , modules ? []
             , extra-hackages ? [] # Extra Hackage repositories to use besides main one.
-            }@args:
+            }:
 
             let
               hackageAll = builtins.foldl' final.lib.recursiveUpdate hackage extra-hackages;
             in
 
             import ../package-set.nix {
-                inherit (args) pkg-def pkg-def-extras;
+                inherit pkg-def pkg-def-extras;
                 modules = defaultModules ++ modules;
                 pkgs = final;
                 hackage = hackageAll;
@@ -105,7 +105,7 @@ final: prev: {
             { stack-pkgs  # Path to the output of stack-to-nix
             , pkg-def-extras ? []
             , modules ? []
-            }@args:
+            }:
             let
                 # The Stackage release referenced in the stack config
                 pkg-def = stackage.${stack-pkgs.resolver} or (throw ''
@@ -666,26 +666,27 @@ final: prev: {
                   let
                     callProjectResults = callCabalProjectToNix config;
 
-                    plan-pkgs = importAndFilterProject {
-                      inherit (callProjectResults) projectNix sourceRepos src;
-                    };
-
                     buildProject = if pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform
                       then pkgs.buildPackages.haskell-nix.cabalProject' projectModule
                       else project;
 
                     pkg-set =
-                      if plan-pkgs ? configurationError then
-                        {
-                          inherit (plan-pkgs) configurationError;
-                          config = {
-                            compiler.nix-name = config.compiler-nix-name;
-                            hsPkgs = {};
-                            inherit (config) evalPackages;
-                          };
-                        }
-                      else
-                        let
+                      let
+                        plan-pkgs = importAndFilterProject {
+                          inherit (callProjectResults) projectNix sourceRepos src;
+                        };
+                      in
+                        if plan-pkgs ? configurationError then
+                          {
+                            inherit (plan-pkgs) configurationError;
+                            config = {
+                              compiler.nix-name = config.compiler-nix-name;
+                              hsPkgs = {};
+                              inherit (config) evalPackages;
+                            };
+                          }
+                        else
+                          let
                             compiler-nix-name' =
                               if config.compiler-nix-name != null
                                 then config.compiler-nix-name
@@ -695,49 +696,50 @@ final: prev: {
                             package.compiler-nix-name.version = (config.compilerSelection pkgs.buildPackages).${compiler-nix-name'}.version;
                             plan.compiler-nix-name.version = (config.compilerSelection pkgs.buildPackages).${(plan-pkgs.pkgs hackage).compiler.nix-name}.version;
                             withMsg = lib.assertMsg;
-                        in
-                          # Check that the GHC version of the selected compiler matches the one of the plan
-                          assert (withMsg (package.compiler-nix-name.version == plan.compiler-nix-name.version)
-                            ''The compiler versions for the package and the plan don't match. Make sure you didn't forget to update plan-sha256.''
-                          );
-                          mkPkgSet {
-                            pkg-def = excludeBootPackages config.compiler-nix-name plan-pkgs.pkgs;
+                          in
+                            # Check that the GHC version of the selected compiler matches the one of the plan
+                            assert (withMsg (package.compiler-nix-name.version == plan.compiler-nix-name.version)
+                              ''The compiler versions for the package and the plan don't match. Make sure you didn't forget to update plan-sha256.''
+                            );
+                            mkPkgSet {
+                              pkg-def =
+                                excludeBootPackages config.compiler-nix-name plan-pkgs.pkgs;
 
-                            pkg-def-extras =
-                              [ plan-pkgs.extras
-                                # Using the -unchecked version here to avoid infinite
-                                # recursion issues when checkMaterialization = true
-                                pkgs.ghc-boot-packages-unchecked.${compiler-nix-name'}
-                              ] ++
-                              config.pkgs-def-extras or [];
+                              pkg-def-extras =
+                                [ plan-pkgs.extras
+                                  # Using the -unchecked version here to avoid infinite
+                                  # recursion issues when checkMaterialization = true
+                                  pkgs.ghc-boot-packages-unchecked.${compiler-nix-name'}
+                                ] ++
+                                config.pkgs-def-extras or [];
 
-                            # note that these modules are for the pkgs-set, so `config` here is the project
-                            # config (in scope), not the pkgs-set config (which would be passed in)
-                            modules =
-                              # set doExactConfig = true, as we trust cabals resolution for
-                              # the plan.
-                              [ { doExactConfig = true; }
-                                # patches module
-                                ghcHackagePatches.${compiler-nix-name'} or {}
-                              ] ++
-                              [ { _module.args.buildModules = lib.mkForce buildProject.pkg-set; } ] ++
-                              config.modules or [] ++
-                              [ {
-                                  ghc.package =
-                                    if config.ghcOverride != null
-                                      then config.ghcOverride
-                                    else if config.ghc != null
-                                      then config.ghc
-                                    else
-                                      lib.mkDefault (config.compilerSelection pkgs.buildPackages).${config.compiler-nix-name};
+                              # note that these modules are for the pkgs-set, so `config` here is the project
+                              # config (in scope), not the pkgs-set config (which would be passed in)
+                              modules =
+                                [ # set doExactConfig = true, as we trust cabals resolution for the plan.
+                                  { doExactConfig = true; }
+                                  ghcHackagePatches.${compiler-nix-name'} or {}
+                                  { _module.args.buildModules = lib.mkForce buildProject.pkg-set; }
+                                ] ++
+                                config.modules or [] ++
+                                [ {
+                                    ghc.package =
+                                      if config.ghcOverride != null
+                                        then config.ghcOverride
+                                      else if config.ghc != null
+                                        then config.ghc
+                                      else
+                                        lib.mkDefault (config.compilerSelection pkgs.buildPackages).${config.compiler-nix-name};
 
-                                  compiler.nix-name = lib.mkForce config.compiler-nix-name;
-                              } ] ++
-                              [ { evalPackages = lib.mkDefault config.evalPackages; } ] ++
-                              plan-pkgs.modules or [];
+                                    compiler.nix-name = lib.mkForce config.compiler-nix-name;
+                                } ] ++
+                                [ { evalPackages = lib.mkDefault config.evalPackages; } ] ++
+                                plan-pkgs.modules or [];
 
-                            extra-hackages = config.extra-hackages or [] ++ callProjectResults.extra-hackages;
-                        };
+                              extra-hackages =
+                                config.extra-hackages or [] ++
+                                callProjectResults.extra-hackages;
+                          };
 
                     project = addProjectAndPackageAttrs {
                         args = config;
@@ -1008,35 +1010,65 @@ final: prev: {
                     inherit (config.project) hsPkgs;
                   })
                   #
-                  ({ config, lib, ... }:
+                  ({ config, lib, pkg, ... }:
                     let
-                      callProjectResults = callStackToNix (config // lib.optionalAttrs (config.cache == null) { inherit cache; });
                       generatedCache = genStackCache config;
                       cache = if config.cache != null then config.cache else generatedCache;
 
-                    in let
+                      callProjectResults = callStackToNix (config // lib.optionalAttrs (config.cache == null) { inherit cache; });
+
                       buildProject = if pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform
                         then pkgs.buildPackages.haskell-nix.stackProject' projectModule
                         else project;
 
-                      pkg-set = mkStackPkgSet {
-                        stack-pkgs = importAndFilterProject {
-                          inherit (callProjectResults) projectNix sourceRepos src;
+                      pkg-set =
+                        let
+                          stack-pkgs = importAndFilterProject {
+                            inherit (callProjectResults) projectNix sourceRepos src;
+                          };
+
+                          # The Stackage release referenced in the stack config
+                          pkg-def = stackage.${stack-pkgs.resolver} or (throw ''
+                          This version of stackage.nix does not know about the Stackage resolver ${stack-pkgs.resolver}.
+                          You may need to update haskell.nix to one that includes a newer stackage.nix.
+                          '');
+
+                          # The compiler referenced in the stack config
+                          compiler = (stack-pkgs.extras hackage).compiler or (pkg-def hackage).compiler;
+
+                          # Remove fake packages generated from stack keywords used in ghc-options
+                          removeStackSpecial = module: if builtins.typeOf module == "set"
+                            then module // { packages = removeSpecialPackages (module.packages or {}); }
+                            else module;
+
+                          removeSpecialPackages = ps: removeAttrs ps [ "$locals" "$targets" "$everything" ];
+                        in mkPkgSet {
+                            pkg-def = excludeBootPackages null pkg-def;
+
+                            pkg-def-extras =
+                              [ stack-pkgs.extras
+                                pkgs.ghc-boot-packages.${compiler.nix-name}
+                              ] ++
+                              config.pkg-dev-extras or [];
+
+                            # note that these modules are for the pkgs-set, so `config` here is the project
+                            # config (in scope), not the pkgs-set config (which would be passed in)
+                            modules =
+                              [ # set doExactConfig = true. The stackage set should be consistent
+                                # and we should trust stackage here!
+                                { doExactConfig = true; }
+                                ghcHackagePatches.${compiler.nix-name} or {}
+                                { _module.args.buildModules = lib.mkForce buildProject.pkg-set; }
+                                (mkCacheModule cache)
+                              ] ++
+                              config.modules or [] ++
+                              lib.optional (config.ghc != null)
+                                { ghc.package = config.ghc; } ++
+                              lib.optional (config.compiler-nix-name != null)
+                                { compiler.nix-name = lib.mkForce config.compiler-nix-name; } ++
+                              [ { evalPackages = lib.mkDefault evalPackages; } ] ++
+                              map removeStackSpecial (stack-pkgs.modules or []);
                         };
-
-                        pkg-def-extras = config.pkg-def-extras or [];
-
-                        modules =
-                          [ { _module.args.buildModules = lib.mkForce buildProject.pkg-set; }
-                            (mkCacheModule cache)
-                          ] ++
-                          config.modules or [] ++
-                          lib.optional (config.ghc != null)
-                            { ghc.package = config.ghc; } ++
-                          lib.optional (config.compiler-nix-name != null)
-                            { compiler.nix-name = lib.mkForce config.compiler-nix-name; } ++
-                          [ { evalPackages = lib.mkDefault evalPackages; } ];
-                      };
 
                       project = addProjectAndPackageAttrs {
                         args = config;
