@@ -79,4 +79,13 @@ with lib.types;
       type = lib.types.unspecified;
     };
   };
+
+  config = {
+    # Pass buildProject to the modules
+    _module.args = {
+      # to make it easy to depends on build packages in, eg., shell definition:
+      inherit (config.project) buildProject;
+    };
+    inherit (config.project) hsPkgs;
+  };
 }

@@ -654,16 +654,7 @@ final: prev: {
               (if builtins.isList projectModule then projectModule else [ projectModule ]) ++
               [ (import ../modules/project-common.nix)
                 (import ../modules/cabal-project.nix)
-                # Pass the pkgs and the buildProject to the modules
-                ({ config, lib, ... }: {
-                  _module.args = {
-                    pkgs = final;
-                    # to make it easy to depends on build packages in, eg., shell definition:
-                    inherit (config.project) buildProject;
-                  };
-                  inherit (config.project) hsPkgs;
-                })
-                #
+                { _module.args = { pkgs = final; }; }
                 ({ config, lib, pkgs, ... }:
                   let
                     callProjectResults = callCabalProjectToNix config;
@@ -966,16 +957,7 @@ final: prev: {
                 (if builtins.isList m then m else [m]) ++
                 [ (import ../modules/project-common.nix)
                   (import ../modules/stack-project.nix)
-                  # Pass the pkgs and the buildProject to the modules
-                  ({ config, lib, ... }: {
-                    _module.args = {
-                      pkgs = final;
-                      # to make it easy to depends on build packages in, eg., shell definition:
-                      inherit (config.project) buildProject;
-                    };
-                    inherit (config.project) hsPkgs;
-                  })
-                  #
+                  { _module.args = { pkgs = final; }; }
                   ({ config, lib, ... }:
                     let
                       callProjectResults = callStackToNix (config // lib.optionalAttrs (config.cache == null) { inherit cache; });
