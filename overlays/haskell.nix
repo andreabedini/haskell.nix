@@ -665,7 +665,7 @@ final: prev: {
 
                     buildProject = if pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform
                       then pkgs.buildPackages.haskell-nix.cabalProject' projectModule
-                      else project;
+                      else config.project;
 
                     pkg-set =
                       if plan-pkgs ? configurationError then
@@ -703,7 +703,7 @@ final: prev: {
                           extra-hackages = config.extra-hackages or [] ++ callProjectResults.extra-hackages;
                         };
 
-                    project = addProjectAndPackageAttrs {
+                    rawProject = {
                         args = config;
                         projectFunction = haskell-nix: haskell-nix.cabalProject';
 
@@ -719,10 +719,10 @@ final: prev: {
                         # specific to cabalProject
                         plan-nix = callProjectResults.projectNix;
                         inherit (callProjectResults) index-state-max;
-                      };
+                    };
                   in {
                     options.project = lib.mkOption { type = lib.types.unspecified; };
-                    config.project = project;
+                    config.project = addProjectAndPackageAttrs rawProject;
                   }
                 )
               ];
@@ -967,7 +967,7 @@ final: prev: {
                     in let
                       buildProject = if pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform
                         then pkgs.buildPackages.haskell-nix.stackProject' projectModule
-                        else project;
+                        else config.project;
 
                       pkg-set = mkStackPkgSet {
                         stack-pkgs = importAndFilterProject {
@@ -988,7 +988,7 @@ final: prev: {
                           [ { evalPackages = lib.mkDefault evalPackages; } ];
                       };
 
-                      project = addProjectAndPackageAttrs {
+                      rawProject = {
                         args = config;
                         projectFunction = haskell-nix: haskell-nix.stackProject';
 
@@ -1001,11 +1001,12 @@ final: prev: {
                         tools = pkgs.buildPackages.haskell-nix.tools' config.evalPackages pkg-set.config.compiler.nix-name;
                         roots = pkgs.haskell-nix.roots pkg-set.config.compiler.nix-name;
 
+                        # specific to stackProject
                         stack-nix = callProjectResults.projectNix;
                       };
                     in {
                       options.project = lib.mkOptions { type = lib.types.unspecified; };
-                      config.project = project;
+                      config.project = addProjectAndPackageAttrs rawProject;
                     }
                   )
                 ];
