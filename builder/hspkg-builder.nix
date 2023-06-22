@@ -28,17 +28,19 @@ let
   src =
     if bundledSrc != null then
       ghc.configured-src + bundledSrc
-    else
+    else if pkg.src ? "url" then
       let possiblePath =
         lib.findFirst builtins.pathExists null (
         lib.mapAttrsToList
-          (n: v: v + lib.strings.removePrefix n pkg.src)
-          (lib.filterAttrs (n: _: lib.hasPrefix n pkg.src) inputMap));
+          (n: v: v + lib.strings.removePrefix n pkg.src.url)
+          (lib.filterAttrs (n: _: lib.hasPrefix n pkg.src.url) inputMap));
       in
         if possiblePath == null then
           pkg.src
         else
-          builtins.path { path = possiblePath; inherit sha256; };
+          builtins.path { path = possiblePath; inherit sha256; }
+    else
+      pkg.src;
 
   cabalFile = if package-description-override == null || bundledSrc != null then null else package-description-override;
 
