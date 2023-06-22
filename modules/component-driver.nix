@@ -99,6 +99,7 @@ in
 
   options.inputMap = lib.mkOption {
     type = lib.types.attrsOf lib.types.package;
+    default = {};
   };
 
   options.hsPkgs = lib.mkOption {
