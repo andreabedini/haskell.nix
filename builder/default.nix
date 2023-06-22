@@ -13,7 +13,7 @@
 #
 # tl;dr: the builder must not re-introduce any reference to the build plan.
 
-{ pkgs, buildPackages, evalPackages, stdenv, lib, haskellLib, ghc, compiler-nix-name, fetchurl, nonReinstallablePkgs, hsPkgs, compiler }:
+{ pkgs, buildPackages, evalPackages, stdenv, lib, haskellLib, ghc, compiler-nix-name, fetchurl, nonReinstallablePkgs, hsPkgs, compiler, inputMap }:
 
 let
   # Builds a single component of a package.
@@ -26,7 +26,7 @@ let
   };
 
   setup-builder = haskellLib.weakCallPackage pkgs ./setup-builder.nix {
-    ghc = (ghc.passthru.buildGHC or ghc);
+    ghc = ghc.passthru.buildGHC or ghc;
     hsPkgs = hsPkgs.buildPackages;
     # We need to use the buildPackages stdenv to build the setup-builder.
     # in the native case, it would be the same in the cross case however
@@ -54,7 +54,7 @@ let
   # When building setup depends we need to use the build systems GHC and Packages
   makeSetupConfigFiles = haskellLib.weakCallPackage buildPackages ./make-config-files.nix {
     inherit haskellLib nonReinstallablePkgs;
-    ghc = (ghc.passthru.buildGHC or ghc);
+    ghc = ghc.passthru.buildGHC or ghc;
   };
 
 
@@ -100,7 +100,7 @@ in {
   # Build a Haskell package from its config.
   # TODO: this pkgs is the adjusted pkgs, but pkgs.pkgs is unadjusted
   build-package = haskellLib.weakCallPackage pkgs ./hspkg-builder.nix {
-    inherit haskellLib ghc compiler-nix-name comp-builder setup-builder;
+    inherit haskellLib ghc compiler-nix-name comp-builder setup-builder inputMap;
   };
 
   inherit shellFor makeConfigFiles;

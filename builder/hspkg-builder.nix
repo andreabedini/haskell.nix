@@ -1,4 +1,4 @@
-{ pkgs, buildPackages, stdenv, lib, haskellLib, ghc, compiler-nix-name, fetchurl, runCommand, comp-builder, setup-builder }:
+{ pkgs, buildPackages, stdenv, lib, haskellLib, ghc, compiler-nix-name, fetchurl, runCommand, comp-builder, setup-builder, inputMap }:
 
 config:
 { flags
@@ -24,10 +24,21 @@ let
       "ghc902/stm-2.5.0.0" = "/libraries/stm";
       "ghc902/filepath-1.4.2.1" = "/libraries/filepath";
     }."${compiler-nix-name}/${name}" or null;
+
   src =
-    if bundledSrc != null
-      then ghc.configured-src + bundledSrc
-    else pkg.src;
+    if bundledSrc != null then
+      ghc.configured-src + bundledSrc
+    else
+      let possiblePath =
+        lib.findFirst builtins.pathExists null (
+        lib.mapAttrsToList
+          (n: v: v + lib.strings.removePrefix n pkg.src)
+          (lib.filterAttrs (n: _: lib.hasPrefix n pkg.src) inputMap));
+      in
+        if possiblePath == null then
+          pkg.src
+        else
+          builtins.path { path = possiblePath; inherit sha256; };
 
   cabalFile = if package-description-override == null || bundledSrc != null then null else package-description-override;
 
