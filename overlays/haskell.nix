@@ -724,12 +724,29 @@ final: prev: {
                   else
                     let package = package' // { recurseForDerivations = false; };
                     in package' // rec {
-                      components = final.lib.mapAttrs (n: v:
-                        if n == "library" || n == "all"
-                          then v // { inherit project package; }
-                          else final.lib.mapAttrs (_: c: c // { inherit project package; }) v
-                      ) package'.components;
                       inherit project;
+
+                      appendProjectModule = module:
+                        (project.appendModule module).hsPkgs.${packageName};
+
+                      components = final.lib.mapAttrs (componentType: c:
+                        # In this case c is a component derivation
+                        if componentType == "library" || componentType == "all" then
+                          c // {
+                            inherit project package componentType;
+                            appendProjectModule = module:
+                              (project.appendModule m).hsPkgs.${packageName}.components.${componentType};
+                          }
+                        # Otherwise it's a attrset mapping component names to their derivation
+                        else
+                          final.lib.mapAttrs (componentName: c':
+                            c' // {
+                              inherit project package componentType componentName;
+                              appendProjectModule = module:
+                                (project.appendModule m).hsPkgs.${packageName}.components.${componentType}.${componentName};
+                              }
+                          ) c
+                      ) package'.components;
 
                       # Look up a component in the package based on ctype:name
                       getComponent = componentName:
@@ -741,16 +758,16 @@ final: prev: {
                             then components.library
                             else components.${haskellLib.prefixComponent.${builtins.elemAt m 0}}.${builtins.elemAt m 1};
 
-                      coverageReport = haskellLib.coverageReport (rec {
+                      coverageReport = haskellLib.coverageReport {
                         name = package.identifier.name + "-" + package.identifier.version;
                         # Include the checks for a single package.
-                        checks = final.lib.filter (final.lib.isDerivation) (final.lib.attrValues package'.checks);
+                        checks = final.lib.filter final.lib.isDerivation (final.lib.attrValues package'.checks);
                         # Checks from that package may provide coverage information for any library in the project.
                         mixLibraries = final.lib.concatMap
                           (pkg: final.lib.optional (pkg.components ? library) pkg.components.library)
                             (final.lib.attrValues (haskellLib.selectProjectPackages project.hsPkgs));
                         ghc = project.pkg-set.config.ghc.package;
-                      });
+                      };
                     }
                 ) (builtins.removeAttrs rawProject.hsPkgs
                   # These are functions not packages
