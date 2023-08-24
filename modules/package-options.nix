@@ -75,7 +75,7 @@
     };
 
     postHaddock = lib.mkOption {
-      type = lib.types.nullOr haskellLib.types.uniqueStr;
+      type = lib.types.nullOr lib.types.lines;
       default = null;
     };
 
